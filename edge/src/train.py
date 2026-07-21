@@ -6,6 +6,16 @@ EVERY epoch. If you stop it (Ctrl+C, or just close the terminal) and rerun
 later, it picks up exactly where it left off -- same epoch count, same
 optimizer momentum, same "best so far" tracking, same loss/accuracy history.
 
+All paths below are anchored to the project root via Path(__file__), NOT
+to the current working directory. This matters: a plain relative string
+like 'models/checkpoint.pth' resolves against whatever folder you happen
+to run the command from, so running the exact same script from two
+different folders silently looks at two different checkpoint files. That
+mismatch is what caused a previous run to "lose" epoch 13 and restart
+from scratch -- the checkpoint was never deleted, it just wasn't where
+this run went looking. Anchoring to __file__ makes the resolved path
+identical no matter where you launch `python ... train.py` from.
+
 models/best_model.pth remains just the clean weights of your best model
 so far, for deployment / ONNX export -- it's never touched by the resume
 logic itself, only updated when a new epoch actually beats the previous best.
@@ -15,7 +25,6 @@ import os
 import sys
 import time
 import json
-import yaml
 import random
 import torch
 import torch.nn as nn
@@ -25,12 +34,19 @@ from pathlib import Path
 from sklearn.metrics import f1_score, classification_report, confusion_matrix
 from tqdm import tqdm
 
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from src.data_loader import load_config, create_dataloaders
 from src.model import build_model, count_parameters
 
-CHECKPOINT_PATH = 'models/checkpoint.pth'
-BEST_MODEL_PATH = 'models/best_model.pth'
-HISTORY_PATH = 'models/training_history.json'
+MODELS_DIR = PROJECT_ROOT / 'models'
+CHECKPOINT_PATH = MODELS_DIR / 'checkpoint.pth'
+BEST_MODEL_PATH = MODELS_DIR / 'best_model.pth'
+HISTORY_PATH = MODELS_DIR / 'training_history.json'
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / 'configs' / 'config.yaml'
 
 
 def set_seed(seed: int):
@@ -126,9 +142,9 @@ def load_checkpoint(path, model, optimizer, scheduler, device):
             ckpt['patience_counter'], ckpt['history'])
 
 
-def train(config_path='configs/config.yaml'):
+def train(config_path=None):
     # 1. Load config
-    config = load_config(config_path)
+    config = load_config(config_path or DEFAULT_CONFIG_PATH)
     train_cfg = config.get('training', {})
 
     # 2. Set seed
@@ -162,15 +178,15 @@ def train(config_path='configs/config.yaml'):
         mode='min'
     )
 
-    os.makedirs('models', exist_ok=True)
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 9. Resume from checkpoint if one exists -- this is the whole point.
+    # 9. Resume from checkpoint if one exists
     start_epoch = 0
     best_val_f1 = 0.0
     patience_counter = 0
     history = {'train_loss': [], 'train_acc': [], 'val_loss': [], 'val_acc': [], 'val_f1': []}
 
-    if os.path.exists(CHECKPOINT_PATH):
+    if CHECKPOINT_PATH.exists():
         print(f"Found checkpoint at {CHECKPOINT_PATH} -- resuming training.")
         start_epoch, best_val_f1, patience_counter, history = load_checkpoint(
             CHECKPOINT_PATH, model, optimizer, scheduler, device
@@ -179,7 +195,7 @@ def train(config_path='configs/config.yaml'):
               f"best_val_f1 so far: {best_val_f1:.4f}, "
               f"patience_counter: {patience_counter}")
     else:
-        print("No checkpoint found -- starting training from scratch.")
+        print(f"No checkpoint found at {CHECKPOINT_PATH} -- starting training from scratch.")
 
     early_stopping_patience = train_cfg.get('early_stopping_patience', 10)
     num_epochs = train_cfg.get('num_epochs', 50)
@@ -211,9 +227,8 @@ def train(config_path='configs/config.yaml'):
         else:
             patience_counter += 1
 
-        # Save the full checkpoint every epoch, regardless of whether this
-        # epoch improved on the best score -- this is what lets you stop
-        # today and resume tomorrow without losing progress.
+        # Save the full checkpoint every epoch -- this is what lets you stop
+        # today and resume tomorrow without losing progress, from ANY folder.
         save_checkpoint(CHECKPOINT_PATH, model, optimizer, scheduler,
                          epoch + 1, best_val_f1, patience_counter, history)
         with open(HISTORY_PATH, 'w') as f:

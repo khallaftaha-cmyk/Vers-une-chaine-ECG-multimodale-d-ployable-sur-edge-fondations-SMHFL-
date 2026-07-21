@@ -28,9 +28,14 @@ import wfdb
 from pathlib import Path
 from collections import Counter
 
-# Add project root to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent  # .../edge
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from src.data_loader import load_config, parse_snomed_labels, scan_dataset
+
+REPORTS_DIR = PROJECT_ROOT / 'reports'
 
 
 def print_section(title: str):
@@ -93,21 +98,20 @@ def explore_dataset(config: dict):
     """Part 2: Explore the Chapman-Shaoxing dataset."""
     print_section("PART 2 — Chapman-Shaoxing Dataset Exploration")
 
-    data_dir = config['data']['raw_dir']
+    raw_dir = config['data']['raw_dir']
+    data_dir = raw_dir if os.path.isabs(raw_dir) else str(PROJECT_ROOT / raw_dir)
 
     if not os.path.exists(data_dir):
         print(f"ERROR: Data directory not found: {data_dir}")
         print("Run 'python scripts/extract_dataset.py' first!")
         return None
 
-    # Count files
     hea_files = glob.glob(os.path.join(data_dir, '**', '*.hea'), recursive=True)
     mat_files = glob.glob(os.path.join(data_dir, '**', '*.mat'), recursive=True)
     print(f"  .hea (header) files:  {len(hea_files)}")
     print(f"  .mat (signal) files:  {len(mat_files)}")
     print(f"  Total records:        {len(hea_files)}")
 
-    # Load a sample record
     if not hea_files:
         print("No records found!")
         return None
@@ -123,7 +127,6 @@ def explore_dataset(config: dict):
     print(f"  Physical units:       {record.units}")
     print(f"  Signal shape:         {record.p_signal.shape}")
 
-    # Header comments (contain diagnosis codes)
     header = wfdb.rdheader(sample_path)
     print(f"\n  Header comments:")
     for comment in header.comments:
@@ -136,31 +139,28 @@ def visualize_sample_ecg(config: dict):
     """Part 3: Visualize a sample 12-lead ECG."""
     print_section("PART 3 — ECG Signal Visualization")
 
-    data_dir = config['data']['raw_dir']
+    raw_dir = config['data']['raw_dir']
+    data_dir = raw_dir if os.path.isabs(raw_dir) else str(PROJECT_ROOT / raw_dir)
     hea_files = glob.glob(os.path.join(data_dir, '**', '*.hea'), recursive=True)
 
     if not hea_files:
         print("No records found. Extract dataset first.")
         return
 
-    # Read a sample record
     sample_path = os.path.splitext(hea_files[0])[0]
     record = wfdb.rdrecord(sample_path)
     signal = record.p_signal  # (5000, 12)
     lead_names = record.sig_name
     fs = record.fs
 
-    # Parse its diagnosis
     header = wfdb.rdheader(sample_path)
     label_mapping = config.get('label_mapping', {})
     labels = parse_snomed_labels(header, label_mapping)
     diagnosis = ', '.join(labels) if labels else 'Unknown'
 
-    # Create time axis in seconds
     time_axis = np.arange(signal.shape[0]) / fs
 
-    # --- Plot 1: All 12 leads ---
-    os.makedirs('reports', exist_ok=True)
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
     fig, axes = plt.subplots(12, 1, figsize=(14, 20), sharex=True)
     fig.suptitle(f'12-Lead ECG — {os.path.basename(sample_path)}\nDiagnosis: {diagnosis}',
@@ -175,14 +175,12 @@ def visualize_sample_ecg(config: dict):
 
     axes[-1].set_xlabel('Time (seconds)', fontsize=12)
     plt.tight_layout()
-    plt.savefig('reports/sample_12lead_ecg.png', dpi=150, bbox_inches='tight')
+    plt.savefig(REPORTS_DIR / 'sample_12lead_ecg.png', dpi=150, bbox_inches='tight')
     plt.close()
-    print(f"  Saved: reports/sample_12lead_ecg.png")
+    print(f"  Saved: {REPORTS_DIR / 'sample_12lead_ecg.png'}")
 
-    # --- Plot 2: Zoom on Lead II (most clinically used) ---
     fig, ax = plt.subplots(figsize=(14, 4))
     lead_ii_idx = lead_names.index('II') if 'II' in lead_names else 1
-    # Show first 3 seconds (zoom)
     zoom_samples = int(3 * fs)
     ax.plot(time_axis[:zoom_samples], signal[:zoom_samples, lead_ii_idx],
             linewidth=1.0, color='#d32f2f')
@@ -191,11 +189,10 @@ def visualize_sample_ecg(config: dict):
     ax.set_ylabel('Amplitude (mV)')
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig('reports/sample_lead_ii_zoom.png', dpi=150, bbox_inches='tight')
+    plt.savefig(REPORTS_DIR / 'sample_lead_ii_zoom.png', dpi=150, bbox_inches='tight')
     plt.close()
-    print(f"  Saved: reports/sample_lead_ii_zoom.png")
+    print(f"  Saved: {REPORTS_DIR / 'sample_lead_ii_zoom.png'}")
 
-    # --- Plot 3: Signal statistics per lead ---
     fig, axes = plt.subplots(1, 3, figsize=(16, 5))
 
     means = [signal[:, i].mean() for i in range(signal.shape[1])]
@@ -216,23 +213,23 @@ def visualize_sample_ecg(config: dict):
 
     plt.suptitle(f'Signal Statistics — {os.path.basename(sample_path)}', fontsize=13)
     plt.tight_layout()
-    plt.savefig('reports/signal_statistics.png', dpi=150, bbox_inches='tight')
+    plt.savefig(REPORTS_DIR / 'signal_statistics.png', dpi=150, bbox_inches='tight')
     plt.close()
-    print(f"  Saved: reports/signal_statistics.png")
+    print(f"  Saved: {REPORTS_DIR / 'signal_statistics.png'}")
 
 
 def analyze_class_distribution(config: dict):
     """Part 4: Full class distribution analysis."""
     print_section("PART 4 — Class Distribution Analysis")
 
-    data_dir = config['data']['raw_dir']
+    raw_dir = config['data']['raw_dir']
+    data_dir = raw_dir if os.path.isabs(raw_dir) else str(PROJECT_ROOT / raw_dir)
     label_mapping = config.get('label_mapping', {})
 
     if not os.path.exists(data_dir):
         print("Data directory not found. Extract dataset first.")
         return
 
-    # Scan entire dataset
     print("  Scanning all records (this may take a few minutes)...\n")
     df = scan_dataset(data_dir, label_mapping)
 
@@ -242,7 +239,6 @@ def analyze_class_distribution(config: dict):
 
     print(f"\n  Total labeled records: {len(df)}")
 
-    # Class distribution
     class_counts = df['primary_label'].value_counts()
     print(f"\n  Class Distribution (primary label):")
     print(f"  {'Class':<35} {'Count':>6} {'Percentage':>10}")
@@ -251,19 +247,16 @@ def analyze_class_distribution(config: dict):
         pct = count / len(df) * 100
         print(f"  {cls:<35} {count:>6} {pct:>9.1f}%")
 
-    # Top 4 classes (what we'll use for training)
     num_classes = config.get('model', {}).get('num_classes', 4)
     top_classes = class_counts.nlargest(num_classes)
     print(f"\n  Top {num_classes} classes (used for training):")
     for cls, count in top_classes.items():
         print(f"    {cls}: {count} records")
 
-    # Plot distribution
-    os.makedirs('reports', exist_ok=True)
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
 
-    # All classes
     colors = sns.color_palette('viridis', len(class_counts))
     axes[0].barh(class_counts.index, class_counts.values, color=colors)
     axes[0].set_title('All Classes Distribution', fontsize=13)
@@ -271,7 +264,6 @@ def analyze_class_distribution(config: dict):
     for i, v in enumerate(class_counts.values):
         axes[0].text(v + 20, i, str(v), va='center', fontsize=9)
 
-    # Top N classes
     colors_top = sns.color_palette('Set2', len(top_classes))
     axes[1].bar(top_classes.index, top_classes.values, color=colors_top)
     axes[1].set_title(f'Top {num_classes} Classes (Training Set)', fontsize=13)
@@ -281,11 +273,10 @@ def analyze_class_distribution(config: dict):
         axes[1].text(i, v + 20, str(v), ha='center', fontsize=10)
 
     plt.tight_layout()
-    plt.savefig('reports/class_distribution.png', dpi=150, bbox_inches='tight')
+    plt.savefig(REPORTS_DIR / 'class_distribution.png', dpi=150, bbox_inches='tight')
     plt.close()
-    print(f"\n  Saved: reports/class_distribution.png")
+    print(f"\n  Saved: {REPORTS_DIR / 'class_distribution.png'}")
 
-    # Multi-label analysis
     multi_label_count = df['labels'].apply(len)
     print(f"\n  Multi-label statistics:")
     print(f"    Records with 1 label:  {(multi_label_count == 1).sum()}")
@@ -302,7 +293,7 @@ def test_model_architecture():
     from src.model import build_model, count_parameters
     import torch
 
-    config = load_config('configs/config.yaml')
+    config = load_config()
     model = build_model(config)
 
     print(f"  Model: {config['model']['name']}")
@@ -310,7 +301,6 @@ def test_model_architecture():
     print(f"\n  Architecture:")
     print(f"  {model}")
 
-    # Dummy forward pass
     x = torch.randn(2, 12, 5000)  # batch of 2
     model.eval()
     with torch.no_grad():
@@ -350,25 +340,16 @@ if __name__ == '__main__':
     print("  Taher KHALLAF — Volet Edge")
     print("🫀"*30)
 
-    config = load_config('configs/config.yaml')
+    config = load_config()
 
-    # Part 1: ECG theory (always runs)
     explore_ecg_basics()
 
-    # Part 2: Dataset exploration
     hea_files = explore_dataset(config)
 
     if hea_files:
-        # Part 3: Visualization
         visualize_sample_ecg(config)
-
-        # Part 4: Class distribution
         analyze_class_distribution(config)
-
-        # Part 5: Model architecture check
         test_model_architecture()
-
-        # Part 6: DataLoader test
         test_dataloader(config)
     else:
         print("\n⚠ Skipping Parts 3-6: extract the dataset first!")

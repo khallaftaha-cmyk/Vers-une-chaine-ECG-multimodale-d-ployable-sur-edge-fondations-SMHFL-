@@ -23,6 +23,9 @@ REPORTS_DIR = PROJECT_ROOT / 'reports'
 
 def get_model_size(model_path: str) -> Dict[str, float]:
     size_bytes = os.path.getsize(model_path)
+    external_data_path = model_path + '.data'
+    if os.path.exists(external_data_path):
+        size_bytes += os.path.getsize(external_data_path)
     return {
         'size_bytes': float(size_bytes),
         'size_kb': size_bytes / 1024,

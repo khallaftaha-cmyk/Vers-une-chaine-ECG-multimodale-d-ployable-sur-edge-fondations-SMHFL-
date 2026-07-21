@@ -73,8 +73,12 @@ def export_to_onnx(model_path: str, config_path=None, output_path: str = None):
     onnx.checker.check_model(onnx_model)
 
     # 8. Size
-    size_mb = os.path.getsize(output_path) / (1024 * 1024)
-    print(f"ONNX Model Size: {size_mb:.2f} MB")
+    external_data_path = str(output_path) + '.data'
+    total_bytes = os.path.getsize(output_path)
+    if os.path.exists(external_data_path):
+        total_bytes += os.path.getsize(external_data_path)
+    size_mb = total_bytes / (1024 * 1024)
+    print(f"ONNX Model Size: {size_mb:.2f} MB (graph + external weights)")
 
     # 9. Verify with ONNX Runtime
     session = ort.InferenceSession(str(output_path), providers=['CPUExecutionProvider'])

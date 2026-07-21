@@ -1,1 +1,43 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.eggs/
+*.egg-info/
 
+# Virtual env
+venv/
+.venv/
+env/
+
+# Data
+data/
+*.zip
+*.mat
+*.hea
+*.dat
+
+# Models
+models/
+*.pth
+*.onnx
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Reports outputs
+reports/*.png
+reports/*.csv
+
+# Misc
+*.log
+.env

@@ -1,0 +1,85 @@
+# === Project Configuration ===
+project:
+  name: "ECG Edge Deployment"
+  author: "Taher KHALLAF"
+  version: "0.1.0"
+
+# === Data ===
+data:
+  dataset_zip: "C:/Users/DELL/Desktop/project files/WFDB_ChapmanShaoxing.zip"
+  raw_dir: "data/raw/WFDB_ChapmanShaoxing"
+  processed_dir: "data/processed"
+  sampling_rate: 500       # Hz
+  duration: 10             # seconds
+  num_leads: 12
+  sequence_length: 5000    # sampling_rate * duration
+  lead_names:
+    - I
+    - II
+    - III
+    - aVR
+    - aVL
+    - aVF
+    - V1
+    - V2
+    - V3
+    - V4
+    - V5
+    - V6
+
+# === Label Mapping (SNOMED-CT → readable) ===
+label_mapping:
+  "426783006": "Sinus Rhythm"           # SR
+  "164889003": "Atrial Fibrillation"     # AF
+  "164890007": "Atrial Flutter"          # AFL
+  "427084000": "Sinus Tachycardia"       # ST
+  "426177001": "Sinus Bradycardia"       # SB
+  "426761007": "Sinus Irregularity"      # SI
+  "713422000": "Sinus Arrhythmia"        # SA
+  "233896004": "Supraventricular Tachycardia"  # SVT
+  "27885002": "Right Bundle Branch Block"      # RBBB
+  "164909002": "Left Bundle Branch Block"      # LBBB
+
+# === Model ===
+model:
+  name: "CNN_BiLSTM"
+  cnn_channels: [64, 128, 256]
+  cnn_kernel_sizes: [7, 5, 3]
+  lstm_hidden_size: 128
+  lstm_num_layers: 2
+  dropout: 0.3
+  num_classes: 4    # Top-4 rhythm classes for simplification
+
+# === Training ===
+training:
+  batch_size: 64
+  num_epochs: 50
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  scheduler_patience: 5
+  early_stopping_patience: 10
+  train_split: 0.7
+  val_split: 0.15
+  test_split: 0.15
+  seed: 42
+  num_workers: 4
+
+# === ONNX Export ===
+onnx:
+  opset_version: 17
+  fp32_path: "models/ecg_model_fp32.onnx"
+  int8_path: "models/ecg_model_int8.onnx"
+  dynamic_axes: true
+
+# === Benchmark ===
+benchmark:
+  num_warmup_runs: 10
+  num_benchmark_runs: 100
+  device: "cpu"    # or "cuda"
+
+# === Edge / Raspberry Pi ===
+edge:
+  mqtt_broker: "localhost"
+  mqtt_port: 1883
+  mqtt_topic: "ecg/inference"
+  inference_timeout_ms: 500
